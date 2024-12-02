@@ -1,0 +1,15 @@
+# List of users to be removed
+$userList = Get-Content "C:\Users\admmikgro\Desktop\Antura.txt"
+
+# Name of the AD group
+$groupName = "Antura_Projektverktyget_Alla_Aktiva"
+
+foreach ($user in $userList) {
+    try {
+        # Remove user from the AD group
+        Remove-ADGroupMember -Identity $groupName -Members $user -Confirm:$false
+        Write-Host "Successfully removed $user from $groupName"
+    } catch {
+        Write-Host "Failed to remove $user from $groupName. Error: $_"
+    }
+}
