@@ -1,0 +1,16 @@
+$userlist = Get-Content 'C:\Users\Bamblix\Desktop\testest.txt'
+
+    $newlist = foreach ($user in $userlist)
+    {
+    $currentuser = Get-ADUser -LDAPFilter "(&(anr=$user)(mail=*))" -Properties samaccountname | select samaccountname
+ 
+        if ($currentuser -eq $null){
+        $user
+        }
+        else {
+        $currentuser
+        }
+    }
+ 
+ $newlist | Write-Output 
+ $newlist | Out-File -FilePath C:\Users\Bamblix\Desktop\testtest4.csv -Encoding UTF8
