@@ -1,0 +1,29 @@
+# Input and output file paths
+$inputFile = "input.txt"
+$outputFile = "sorted_output.txt"
+
+#Read the input files
+$lines = Get-Content $inputFile
+
+#Function ro remove non-alphanumeric characters
+function Remove-UnnecessarySymbols {
+    param($line)
+
+    return -join ($line -replace '[^a-zA-Z0-9]', '')
+}
+
+#Clean the lines by removing unnecessary symbols
+
+$cleanedLines = $lines | ForEach-Object { Remove-UnnecessarySymbols $_ }
+
+#Sort the lines in ascending order
+
+$sortedLines = $cleanedLines | Sort-Object
+
+#Write the sorted lines to the Output file
+
+$sortedLines | Out-File $outputFile
+
+#Display the sorted output in the console
+
+$sortedLines
