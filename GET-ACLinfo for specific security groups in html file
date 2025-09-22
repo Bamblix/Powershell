@@ -1,0 +1,40 @@
+$path = "\\yada.local\userroot\blabla"  # Corrected network path
+$outputFile = "C:\Users\x\Desktop\permissionsInformation.html"  # Specify the desired output HTML path
+
+# List of security groups to filter
+$filterGroups = @(
+    "Administrators",
+    "Users"
+)
+
+Write-Host "Starting to process directories..."
+
+# Get only directories and recursively process them
+$directories = Get-ChildItem -Path $path -Recurse -Directory | ForEach-Object {
+    Write-Host "Processing: $($_.FullName)"
+    $fullPath = $_.FullName
+    $acl = Get-Acl -Path $fullPath
+    
+    # Check the ACLs for matching security groups
+    $filteredAcl = $acl.Access | Where-Object { 
+        $groupName = $_.IdentityReference.ToString().Split('\')[-1]  # Extract group name from IdentityReference
+        $filterGroups -contains $groupName
+    }
+
+    # If filtered ACL is found, include it in the output
+    if ($filteredAcl) {
+        Write-Host "Matches found for $($_.FullName)"
+    }
+
+    $filteredAcl | Select-Object @{Name="Path";Expression={$fullPath}}, IdentityReference, FileSystemRights, AccessControlType
+}
+
+# Check if data was found
+if ($directories.Count -eq 0) {
+    Write-Host "No matching data found for the specified security groups."
+} else {
+    # Convert the data into an HTML table and export to HTML file
+    $directories | ConvertTo-Html -Property Path, IdentityReference, FileSystemRights, AccessControlType -Head "<style>body {font-family: Arial, sans-serif; margin: 20px;} table {border-collapse: collapse; width: 100%;} th, td {padding: 8px; text-align: left;} tr:nth-child(even) {background-color: #f2f2f2;} th {background-color: #4CAF50; color: white;}</style>" | Out-File -FilePath $outputFile
+
+    Write-Host "Export completed. Data saved to $outputFile"
+}
