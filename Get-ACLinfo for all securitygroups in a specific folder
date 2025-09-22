@@ -1,0 +1,34 @@
+# This is a script that shows all security groups inside a specified folder.
+
+$path = "\\yada.local\userroot\yada"  # Networks UNC
+$outputFile = "C:\Users\xxx\Desktop\AllPermissions.html"  # HTML-filepath
+
+Write-Host "Startar behandling av kataloger..."
+
+# Hämta alla kataloger och bearbeta dem rekursivt
+$directories = Get-ChildItem -Path $path -Recurse -Directory | ForEach-Object {
+    Write-Host "Bearbetar: $($_.FullName)"
+    $fullPath = $_.FullName
+    $acl = Get-Acl -Path $fullPath
+    
+    # Extrahera alla säkerhetsgrupper och deras tillgångar till katalogen
+    $acl.Access | ForEach-Object {
+        $groupName = $_.IdentityReference.ToString().Split('\')[-1]  # Extrahera gruppnamn från IdentityReference
+        [PSCustomObject]@{
+            Path               = $fullPath
+            SecurityGroup      = $groupName
+            FileSystemRights   = $_.FileSystemRights
+            AccessControlType  = $_.AccessControlType
+        }
+    }
+}
+
+# Kontrollera om data hittades
+if ($directories.Count -eq 0) {
+    Write-Host "Ingen matchande data hittades för säkerhetsgrupper."
+} else {
+    # Konvertera data till en HTML-tabell och exportera till HTML-fil
+    $directories | ConvertTo-Html -Property Path, SecurityGroup, FileSystemRights, AccessControlType -Head "<style>body {font-family: Arial, sans-serif; margin: 20px;} table {border-collapse: collapse; width: 100%;} th, td {padding: 8px; text-align: left;} tr:nth-child(even) {background-color: #f2f2f2;} th {background-color: #4CAF50; color: white;}</style>" | Out-File -FilePath $outputFile
+
+    Write-Host "Exporten är klar. Data sparad i $outputFile"
+}
