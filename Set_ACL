@@ -1,0 +1,33 @@
+#Snabb tutorial. Den här skriptet skapar nya ACL grupper beroende om man har rätt behörigheter. Man kan köra den här skriptet som admin och följa andra anvisningar så kommer detta fungera.
+# Define the path to the file or folder
+$path = "C:\path\to\your\file_or_folder"
+
+# Define the user or group for whom you want to change permissions
+$user = "SVK\L_Func_Admin_File"   # Replace with the appropriate username or group
+
+# Get the current ACL of the file or folder
+$acl = Get-Acl -Path $path
+
+# Find and remove the deny rule for the user/group (if it exists)
+$denyRule = $acl.Access | Where-Object { $_.IdentityReference -eq $user -and $_.AccessControlType -eq 'Deny' }
+
+if ($denyRule) {
+    # Remove the deny rule
+    $acl.RemoveAccessRule($denyRule)
+    Write-Host "Removed deny rule for $user"
+}
+
+# Create a new allow rule
+$allowRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+    $user, 
+    "FullControl", 
+    "Allow"
+)
+
+# Add the allow rule to the ACL
+$acl.AddAccessRule($allowRule)
+
+# Set the updated ACL back to the file or folder
+Set-Acl -Path $path -AclObject $acl
+
+Write-Host "Changed deny to allow for $user on $path"
