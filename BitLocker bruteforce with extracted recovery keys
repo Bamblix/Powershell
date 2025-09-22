@@ -1,0 +1,78 @@
+# Requires elevation (Run as Administrator)
+#Requires -RunAsAdministrator
+
+# Path to the file containing recovery keys (one key per line)
+$recoveryKeysFile = "C:\recovery_keys.txt"  # Update this path
+
+# First, let's get all BitLocker volumes
+Write-Host "Scanning for BitLocker encrypted volumes..."
+$bitlockerVolumes = Get-BitLockerVolume
+
+if ($bitlockerVolumes.Count -eq 0) {
+    Write-Error "No BitLocker encrypted volumes found!"
+    exit 1
+}
+
+# Show all found encrypted volumes
+Write-Host "`nFound encrypted volumes:"
+foreach ($volume in $bitlockerVolumes) {
+    Write-Host "Mount Point: $($volume.MountPoint), Volume Type: $($volume.VolumeType), Status: $($volume.LockStatus)"
+}
+
+# If there's more than one, let user select which to unlock
+if ($bitlockerVolumes.Count -gt 1) {
+    Write-Host "`nMultiple encrypted volumes found. Please select which one to unlock:"
+    for ($i = 0; $i -lt $bitlockerVolumes.Count; $i++) {
+        Write-Host "[$i] $($bitlockerVolumes[$i].MountPoint) - $($bitlockerVolumes[$i].VolumeType)"
+    }
+    $selection = Read-Host "Enter the number of the volume to unlock"
+    $selectedVolume = $bitlockerVolumes[$selection]
+} else {
+    $selectedVolume = $bitlockerVolumes[0]
+}
+
+# Check if recovery keys file exists
+if (-not (Test-Path $recoveryKeysFile)) {
+    Write-Error "Recovery keys file not found at $recoveryKeysFile"
+    exit 1
+}
+
+# Read recovery keys
+$recoveryKeys = Get-Content $recoveryKeysFile
+
+Write-Host "`nStarting BitLocker unlock attempts for selected volume..."
+Write-Host "Total recovery keys to try: $($recoveryKeys.Count)"
+
+$attemptCount = 0
+$unlocked = $false
+
+foreach ($key in $recoveryKeys) {
+    $attemptCount++
+    Write-Host "Attempt $attemptCount with key: $key"
+    
+    try {
+        Unlock-BitLocker -MountPoint $selectedVolume.MountPoint -RecoveryPassword $key -ErrorAction Stop
+        Write-Host "Success! Volume unlocked with key: $key" -ForegroundColor Green
+        $unlocked = $true
+        break
+    }
+    catch {
+        Write-Host "Failed with key: $key" -ForegroundColor Red
+    }
+    
+    # Add a small delay between attempts
+    Start-Sleep -Milliseconds 500
+}
+
+if (-not $unlocked) {
+    Write-Host "`nUnable to unlock volume with any of the provided recovery keys." -ForegroundColor Red
+} else {
+    Write-Host "`nVolume successfully unlocked after $attemptCount attempts." -ForegroundColor Green
+    
+    # Try to get the new drive letter if one was assigned
+    Start-Sleep -Seconds 2  # Give Windows a moment to assign a drive letter
+    $updatedVolume = Get-BitLockerVolume | Where-Object { $_.MountPoint -eq $selectedVolume.MountPoint }
+    if ($updatedVolume) {
+        Write-Host "You can now access the drive at: $($updatedVolume.MountPoint)" -ForegroundColor Green
+    }
+}
