@@ -1,0 +1,19 @@
+# Create or clear the output file
+New-Item -Path $outputFile -ItemType File -Force | Out-Null
+
+# Get all text files in the directory
+Get-ChildItem -Path $inputPath -Filter "*.txt" | ForEach-Object {
+    try {
+        # Read the content of each file
+        $content = Get-Content -Path $_.FullName -Raw
+        
+        # Use regex to find the recovery key pattern
+        if ($content -match '\b\d{6}-\d{6}-\d{6}-\d{6}-\d{6}-\d{6}-\d{6}-\d{6}\b') {
+            # Append the match to the output file
+            $matches[0] | Add-Content -Path $outputFile
+        }
+    }
+    catch {
+        Write-Warning "Error processing file $($_.Name): $_"
+    }
+}
