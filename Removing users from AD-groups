@@ -1,0 +1,68 @@
+# Definiera sökvägen till txt-filen som innehåller användarna som ska tas bort
+$usersFile = "C:\Users\xxx\Desktop\usersv2.txt"
+
+# Definiera AD-grupperna
+$adGroups = @(
+    "AD-Group"
+)
+
+# Läs in användarna från filen
+try {
+    $usersToRemove = Get-Content $usersFile -ErrorAction Stop
+}
+catch {
+    Write-Error "Kunde inte läsa filen: $usersFile"
+    Write-Error $_.Exception.Message
+    exit 1
+}
+
+# Logg-fil för att spåra ändringar
+$logFile = "C:\Users\xxx\Desktop\Removal_Log_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+
+# Funktion för att logga händelser
+function Write-Log {
+    param($Message)
+    $logMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'): $Message"
+    Add-Content -Path $logFile -Value $logMessage
+    Write-Host $logMessage
+}
+
+Write-Log "Startar borttagning av användare..."
+
+# För varje AD-grupp
+foreach ($group in $adGroups) {
+    Write-Log "Processar grupp: $group"
+    
+    try {
+        # Kontrollera om gruppen existerar
+        $adGroup = Get-ADGroup -Identity $group -ErrorAction Stop
+        
+        # För varje användare som ska tas bort
+        foreach ($user in $usersToRemove) {
+            try {
+                # Kontrollera om användaren finns i AD
+                $adUser = Get-ADUser -Identity $user -ErrorAction Stop
+                
+                # Kontrollera om användaren är medlem i gruppen
+                $isMember = Get-ADGroupMember -Identity $group | Where-Object {$_.SamAccountName -eq $user}
+                
+                if ($isMember) {
+                    # Ta bort användaren från gruppen
+                    Remove-ADGroupMember -Identity $group -Members $user -Confirm:$false
+                    Write-Log "Lyckades: Tog bort $user från $group"
+                }
+                else {
+                    Write-Log "Information: $user är inte medlem i $group"
+                }
+            }
+            catch {
+                Write-Log "Fel: Kunde inte processa användare $user - $($_.Exception.Message)"
+            }
+        }
+    }
+    catch {
+        Write-Log "Fel: Kunde inte hitta gruppen $group - $($_.Exception.Message)"
+    }
+}
+
+Write-Log "Process slutförd. Se $logFile för fullständig logg."
