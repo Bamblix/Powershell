@@ -1,0 +1,173 @@
+# What it does 1. Loads the AD Module 2. Gets users by SAM with needed properties. 3. For each user it pulls their group DNs, keeping only those matching $GroupFilter. 4. Extracts CN from each matching group DN and buckets the user under that group. 5. Sorts groups by name and users by end date, and emits a nice styled HTML report.
+
+[CmdletBinding()]
+param(
+    [Parameter()]
+    [string]$OutputPath = "C:\Users\xxx\Desktop\ADUsersWithExtAndGSI.html",
+    [Parameter()]
+    [string]$SearchPattern = "*ext*",
+    [Parameter()]
+    [string]$GroupFilter = "*GSI*"
+)
+
+# Function to convert FileTime to readable date
+function Convert-FileTimeToDate {
+    param([Int64]$FileTime)
+    if ($FileTime -eq 0 -or $FileTime -eq [Int64]::MaxValue) {
+        return "Never"
+    }
+    try {
+        return [datetime]::FromFileTime($FileTime)
+    }
+    catch {
+        return "Invalid Date"
+    }
+}
+
+try {
+    # Ensure the Active Directory module is loaded
+    if (-not (Get-Module -Name ActiveDirectory)) {
+        Import-Module ActiveDirectory -ErrorAction Stop
+    }
+
+    Write-Verbose "Fetching AD users matching pattern: $SearchPattern"
+    $users = Get-ADUser -Filter "samAccountName -like '$SearchPattern'" -Properties samAccountName, accountExpires, MemberOf, Created, Enabled -ErrorAction Stop
+    
+    Write-Verbose "Found $($users.Count) users matching the pattern"
+    
+    # Initialize grouped users hashtable using standard hashtable instead of ordered dictionary
+    $groupedUsers = @{}
+    
+    foreach ($user in $users) {
+        Write-Verbose "Processing user: $($user.samAccountName)"
+        try {
+            $groups = Get-ADUser $user.samAccountName -Properties MemberOf | 
+                     Select-Object -ExpandProperty MemberOf
+            
+            $ifsGroups = $groups | Where-Object {$_ -like $GroupFilter}
+            
+            foreach ($group in $ifsGroups) {
+                # Extract clean group name using regex
+                if ($group -match "CN=([^,]+)") {
+                    $groupName = $Matches[1]
+                    
+                    # Create array list if group doesn't exist
+                    if (-not $groupedUsers.$groupName) {
+                        $groupedUsers.$groupName = [System.Collections.ArrayList]::new()
+                    }
+                    
+                    $userObject = [PSCustomObject]@{
+                        samAccountName = $user.samAccountName
+                        EndDate = Convert-FileTimeToDate $user.accountExpires
+                        Created = $user.Created
+                        Enabled = $user.Enabled
+                    }
+                    
+                    $null = $groupedUsers.$groupName.Add($userObject)
+                }
+            }
+        }
+        catch {
+            Write-Warning "Error processing user $($user.samAccountName): $_"
+            continue
+        }
+    }
+
+    # Sort groups by name
+    $sortedGroups = $groupedUsers.Keys | Sort-Object
+
+    # Generate HTML with enhanced styling and features
+    $htmlContent = @"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h2 { color: #333; }
+        h3 { color: #666; margin-top: 30px; }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        th, td { 
+            border: 1px solid #ddd; 
+            padding: 12px 8px; 
+            text-align: left;
+        }
+        th { 
+            background-color: #4CAF50; 
+            color: white;
+        }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        tr:hover { background-color: #f5f5f5; }
+        .summary { 
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .expired { color: red; }
+        .warning { color: orange; }
+    </style>
+</head>
+<body>
+    <h2>Active Directory Users Report</h2>
+    <div class="summary">
+        <p>Generated on: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")</p>
+        <p>Total Groups: $($groupedUsers.Count)</p>
+        <p>Total Users: $($users.Count)</p>
+    </div>
+"@
+
+    foreach ($groupName in $sortedGroups) {
+        $usersInGroup = $groupedUsers.$groupName
+        $htmlContent += @"
+        <h3>Group: $groupName</h3>
+        <p>Users in group: $($usersInGroup.Count)</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>End Date</th>
+                    <th>Created</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+"@
+        
+        $sortedUsers = $usersInGroup | Sort-Object EndDate
+        foreach ($user in $sortedUsers) {
+            $endDateClass = ""
+            if ($user.EndDate -ne "Never" -and $user.EndDate -lt (Get-Date)) {
+                $endDateClass = "expired"
+            }
+            elseif ($user.EndDate -ne "Never" -and $user.EndDate -lt (Get-Date).AddDays(30)) {
+                $endDateClass = "warning"
+            }
+            
+            $htmlContent += @"
+                <tr>
+                    <td>$($user.samAccountName)</td>
+                    <td class="$endDateClass">$($user.EndDate)</td>
+                    <td>$($user.Created)</td>
+                    <td>$(if($user.Enabled){"Active"}else{"Disabled"})</td>
+                </tr>
+"@
+        }
+        
+        $htmlContent += "</tbody></table>"
+    }
+
+    $htmlContent += "</body></html>"
+    
+    # Output HTML to file
+    $htmlContent | Out-File -FilePath $OutputPath -Encoding utf8 -Force
+    Write-Host "HTML report has been generated successfully: $OutputPath"
+}
+catch {
+    Write-Error "An error occurred while generating the report: $_"
+}
