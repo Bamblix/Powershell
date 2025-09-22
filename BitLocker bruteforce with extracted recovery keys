@@ -2,7 +2,7 @@
 #Requires -RunAsAdministrator
 
 # Path to the file containing recovery keys (one key per line)
-$recoveryKeysFile = "C:\recovery_keys.txt"  # Update this path
+$recoveryKeysFile = "C:\Path\To\Your\recovery_keys.txt"  # Update this path
 
 # First, let's get all BitLocker volumes
 Write-Host "Scanning for BitLocker encrypted volumes..."
